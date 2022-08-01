@@ -19,8 +19,10 @@ use std::f32::consts::PI;
 
 use bevy::{
     prelude::*,
+    render::camera::Projection,
     window::{close_on_esc, PresentMode},
 };
+use bevy_rapier3d::prelude::*;
 
 pub const CLEAR: Color = Color::BLACK;
 pub const HEIGHT: f32 = 600.0;
@@ -40,6 +42,12 @@ fn main() {
         })
         // External plugins
         .add_plugins(DefaultPlugins)
+        .insert_resource(RapierConfiguration {
+            gravity: Vect::Z * -9.81,
+            ..default()
+        })
+        .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
+        .add_plugin(RapierDebugRenderPlugin::default())
         .add_system(close_on_esc)
         // Internal plugins
         .add_startup_system(spawn_camera)
@@ -49,11 +57,17 @@ fn main() {
 }
 
 fn spawn_camera(mut commands: Commands) {
-    let mut camera = Camera3dBundle::default();
+    let mut camera = Camera3dBundle {
+        projection: Projection::Perspective(PerspectiveProjection {
+            fov: PI / 6.0,
+            ..default()
+        }),
+        ..default()
+    };
 
-    camera.transform.translation = Vec3::new(10.0, 0.0, 10.0);
+    camera.transform.translation = Vec3::new(10.0, 0.0, 5.0);
     camera.transform.look_at(Vec3::ZERO, Vec3::NEG_X);
-    camera.transform.translation.x -= 3.0;
+    // camera.transform.translation.z -= 1.0;
 
     commands.spawn_bundle(camera);
 }
@@ -65,17 +79,19 @@ fn spawn_stage(
 ) {
     let mut mat: StandardMaterial = Color::PURPLE.into();
     mat.unlit = true;
-    commands.spawn_bundle(PbrBundle {
-        mesh: meshes.add(
-            shape::Quad {
-                size: Vec2 { x: 5.0, y: 30.0 },
-                flip: false,
-            }
-            .into(),
-        ),
-        material: materials.add(mat),
-        ..default()
-    });
+    commands
+        .spawn_bundle(PbrBundle {
+            mesh: meshes.add(
+                shape::Quad {
+                    size: Vec2 { x: 5.0, y: 30.0 },
+                    flip: false,
+                }
+                .into(),
+            ),
+            material: materials.add(mat),
+            ..default()
+        })
+        .insert_bundle((Collider::cuboid(2.5, 15.0, 0.01), RigidBody::Fixed));
 }
 
 fn spawn_character(
@@ -85,13 +101,12 @@ fn spawn_character(
 ) {
     let mut mat: StandardMaterial = Color::GREEN.into();
     mat.unlit = true;
-    let mut transform = Transform::default().looking_at(Vec3::new(7.0, 0.0, 10.0), Vec3::NEG_X);
-    transform.translation = Vec3::new(0.0, 0.0, 1.0);
-    transform.rotate_axis(Vec3::Y, PI * 0.56);
-    commands.spawn_bundle(PbrBundle {
-        mesh: meshes.add(shape::Plane { size: 1.0 }.into()),
-        transform,
-        material: materials.add(mat),
-        ..default()
-    });
+    commands
+        .spawn_bundle(PbrBundle {
+            mesh: meshes.add(shape::Cube { size: 1.0 }.into()),
+            transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.5)),
+            material: materials.add(mat),
+            ..default()
+        })
+        .insert_bundle((Collider::cuboid(0.25, 0.5, 0.5), RigidBody::Dynamic));
 }
