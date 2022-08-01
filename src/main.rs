@@ -19,10 +19,12 @@ use std::f32::consts::PI;
 
 use bevy::{
     prelude::*,
-    render::camera::Projection,
+    render::{camera::Projection, texture::ImageSettings},
     window::{close_on_esc, PresentMode},
 };
+use bevy_asset_loader::prelude::*;
 use bevy_rapier3d::prelude::*;
+use bevy_sprite3d::{AtlasSprite3d, Sprite3dParams, Sprite3dPlugin};
 
 pub const CLEAR: Color = Color::BLACK;
 pub const HEIGHT: f32 = 600.0;
@@ -30,6 +32,12 @@ pub const RESOLUTION: f32 = 16.0 / 9.0;
 
 fn main() {
     App::new()
+        .add_loading_state(
+            LoadingState::new(GameState::Loading)
+                .continue_to_state(GameState::Ready)
+                .with_collection::<ImageAssets>(),
+        )
+        .insert_resource(ImageSettings::default_nearest())
         .insert_resource(ClearColor(CLEAR))
         .insert_resource(WindowDescriptor {
             width: HEIGHT * RESOLUTION,
@@ -40,8 +48,10 @@ fn main() {
             position: WindowPosition::Centered(MonitorSelection::Number(0)),
             ..Default::default()
         })
+        .add_state(GameState::Loading)
         // External plugins
         .add_plugins(DefaultPlugins)
+        .add_plugin(Sprite3dPlugin)
         .insert_resource(RapierConfiguration {
             gravity: Vect::Z * -9.81,
             ..default()
@@ -50,9 +60,12 @@ fn main() {
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_system(close_on_esc)
         // Internal plugins
-        .add_startup_system(spawn_camera)
-        .add_startup_system(spawn_stage)
-        .add_startup_system(spawn_character)
+        .add_system_set(
+            SystemSet::on_enter(GameState::Ready)
+                .with_system(spawn_camera)
+                .with_system(spawn_stage)
+                .with_system(spawn_character),
+        )
         .run();
 }
 
@@ -96,17 +109,35 @@ fn spawn_stage(
 
 fn spawn_character(
     mut commands: Commands,
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    images: Res<ImageAssets>,
+    mut sprite_params: Sprite3dParams,
 ) {
-    let mut mat: StandardMaterial = Color::GREEN.into();
-    mat.unlit = true;
+    let mut transform = Transform::from_translation(Vec3::new(0.0, 0.0, 0.25))
+        .with_rotation(Quat::from_axis_angle(Vec3::Z, PI * 0.5));
+    transform.rotate(Quat::from_axis_angle(Vec3::Y, PI * 0.5));
     commands
-        .spawn_bundle(PbrBundle {
-            mesh: meshes.add(shape::Cube { size: 1.0 }.into()),
-            transform: Transform::from_translation(Vec3::new(0.0, 0.0, 0.5)),
-            material: materials.add(mat),
-            ..default()
-        })
-        .insert_bundle((Collider::cuboid(0.25, 0.5, 0.5), RigidBody::Dynamic));
+        .spawn_bundle(
+            AtlasSprite3d {
+                atlas: images.character_sprite.clone(),
+                partial_alpha: true,
+                transform,
+                unlit: true,
+                ..default()
+            }
+            .bundle(&mut sprite_params),
+        )
+        .insert_bundle((Collider::cuboid(0.25, 0.25, 0.25), RigidBody::Dynamic));
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+enum GameState {
+    Loading,
+    Ready,
+}
+
+#[derive(AssetCollection)]
+struct ImageAssets {
+    #[asset(texture_atlas(tile_size_x = 64., tile_size_y = 64., columns = 14, rows = 7,))]
+    #[asset(path = "player/PlayerSharky(64x64).png")]
+    character_sprite: Handle<TextureAtlas>,
 }
