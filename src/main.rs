@@ -44,14 +44,16 @@ fn main() {
         // Internal plugins
         .add_startup_system(spawn_camera)
         .add_startup_system(spawn_stage)
+        .add_startup_system(spawn_character)
         .run();
 }
 
 fn spawn_camera(mut commands: Commands) {
     let mut camera = Camera3dBundle::default();
 
-    camera.transform.translation = Vec3::new(10.0, 0.0, 10.01);
+    camera.transform.translation = Vec3::new(10.0, 0.0, 10.0);
     camera.transform.look_at(Vec3::ZERO, Vec3::NEG_X);
+    camera.transform.translation.x -= 3.0;
 
     commands.spawn_bundle(camera);
 }
@@ -66,11 +68,29 @@ fn spawn_stage(
     commands.spawn_bundle(PbrBundle {
         mesh: meshes.add(
             shape::Quad {
-                size: Vec2 { x: 10.0, y: 15.0 },
+                size: Vec2 { x: 5.0, y: 30.0 },
                 flip: false,
             }
             .into(),
         ),
+        material: materials.add(mat),
+        ..default()
+    });
+}
+
+fn spawn_character(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    let mut mat: StandardMaterial = Color::GREEN.into();
+    mat.unlit = true;
+    let mut transform = Transform::default().looking_at(Vec3::new(7.0, 0.0, 10.0), Vec3::NEG_X);
+    transform.translation = Vec3::new(0.0, 0.0, 1.0);
+    transform.rotate_axis(Vec3::Y, PI * 0.56);
+    commands.spawn_bundle(PbrBundle {
+        mesh: meshes.add(shape::Plane { size: 1.0 }.into()),
+        transform,
         material: materials.add(mat),
         ..default()
     });
