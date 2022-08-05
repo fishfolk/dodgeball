@@ -10,6 +10,7 @@ bevy = "0.8"
 bevy_rapier3d = "0.16"
 bevy_sprite3d = "1"
 bevy_asset_loader = { version = "0.12", features = ["2d"] }
+leafwing-input-manager = "0.5"
 
 [profile.dev]
 opt-level = 1

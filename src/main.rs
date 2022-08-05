@@ -25,6 +25,7 @@ use bevy::{
 use bevy_asset_loader::prelude::*;
 use bevy_rapier3d::prelude::*;
 use bevy_sprite3d::{AtlasSprite3d, Sprite3dParams, Sprite3dPlugin};
+use leafwing_input_manager::prelude::*;
 
 pub const CLEAR: Color = Color::BLACK;
 pub const HEIGHT: f32 = 600.0;
@@ -59,6 +60,7 @@ fn main() {
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
         .add_plugin(RapierDebugRenderPlugin::default())
         .add_system(close_on_esc)
+        .add_plugin(InputManagerPlugin::<Action>::default())
         // Internal plugins
         .add_system_set(
             SystemSet::on_enter(GameState::Ready)
@@ -66,6 +68,7 @@ fn main() {
                 .with_system(spawn_stage)
                 .with_system(spawn_character),
         )
+        .add_system_set(SystemSet::on_update(GameState::Ready).with_system(player_control))
         .run();
 }
 
@@ -104,7 +107,14 @@ fn spawn_stage(
             material: materials.add(mat),
             ..default()
         })
-        .insert_bundle((Collider::cuboid(2.5, 15.0, 0.01), RigidBody::Fixed));
+        .insert_bundle((
+            Collider::cuboid(2.5, 15.0, 0.01),
+            RigidBody::Fixed,
+            Friction {
+                coefficient: 0.0,
+                combine_rule: CoefficientCombineRule::Min,
+            },
+        ));
 }
 
 fn spawn_character(
@@ -122,11 +132,31 @@ fn spawn_character(
                 partial_alpha: true,
                 transform,
                 unlit: true,
+                pivot: Some(Vec2::new(0.7, 0.5)),
                 ..default()
             }
             .bundle(&mut sprite_params),
         )
-        .insert_bundle((Collider::cuboid(0.25, 0.25, 0.25), RigidBody::Dynamic));
+        .insert_bundle(InputManagerBundle::<Action> {
+            input_map: InputMap::new([
+                (KeyCode::A, Action::MoveLeft),
+                (KeyCode::E, Action::MoveRight),
+                (KeyCode::O, Action::MoveTowards),
+                (KeyCode::Comma, Action::MoveAway),
+            ]),
+            ..default()
+        })
+        .insert_bundle((
+            Collider::cuboid(0.25, 0.25, 0.25),
+            RigidBody::Dynamic,
+            LockedAxes::ROTATION_LOCKED,
+            Velocity::default(),
+            Player,
+            Damping {
+                linear_damping: 5.0,
+                ..default()
+            },
+        ));
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -140,4 +170,30 @@ struct ImageAssets {
     #[asset(texture_atlas(tile_size_x = 64., tile_size_y = 64., columns = 14, rows = 7,))]
     #[asset(path = "player/PlayerSharky(64x64).png")]
     character_sprite: Handle<TextureAtlas>,
+}
+
+#[derive(Component)]
+struct Player;
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Actionlike, Clone, Copy)]
+enum Action {
+    MoveLeft,
+    MoveRight,
+    MoveAway,
+    MoveTowards,
+}
+
+fn player_control(mut player: Query<(&mut Velocity, &ActionState<Action>), With<Player>>) {
+    let (mut velocity, state) = player.single_mut();
+    let mut movement = Vec2::default();
+    for action in state.get_pressed() {
+        match action {
+            Action::MoveLeft => movement.y = -1.0,
+            Action::MoveRight => movement.y = 1.0,
+            Action::MoveAway => movement.x = -1.0,
+            Action::MoveTowards => movement.x = 1.0,
+        }
+    }
+    velocity.linvel = movement.normalize_or_zero().extend(0.0) * 10.0;
 }
