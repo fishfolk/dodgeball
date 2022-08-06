@@ -66,12 +66,14 @@ fn main() {
             SystemSet::on_enter(GameState::Ready)
                 .with_system(spawn_camera)
                 .with_system(spawn_stage)
-                .with_system(spawn_character),
+                .with_system(spawn_character)
+                .with_system(spawn_ball),
         )
         .add_system_set(
             SystemSet::on_update(GameState::Ready)
                 .with_system(player_control)
-                .with_system(character_state),
+                .with_system(character_state)
+                .with_system(take_ball),
         )
         .run();
 }
@@ -121,7 +123,7 @@ fn spawn_character(
     images: Res<ImageAssets>,
     mut sprite_params: Sprite3dParams,
 ) {
-    let mut transform = Transform::from_translation(Vec3::new(0.0, 0.0, 0.25))
+    let mut transform = Transform::from_translation(Vec3::new(0.0, -4.0, 0.25))
         .with_rotation(Quat::from_axis_angle(Vec3::Z, PI * 0.5));
     transform.rotate(Quat::from_axis_angle(Vec3::Y, PI * 0.5));
     commands
@@ -266,3 +268,64 @@ fn character_state(
         }
     }
 }
+
+fn spawn_ball(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+    commands
+        .spawn_bundle(PbrBundle {
+            mesh: meshes.add(
+                shape::Icosphere {
+                    radius: 0.1,
+                    ..default()
+                }
+                .into(),
+            ),
+            transform: Transform::from_xyz(0.0, 0.0, 1.0),
+            ..default()
+        })
+        .insert_bundle((
+            Collider::ball(0.1),
+            RigidBody::Dynamic,
+            Restitution {
+                coefficient: 0.8,
+                combine_rule: CoefficientCombineRule::Max,
+            },
+            Ball,
+        ));
+}
+
+#[derive(Component)]
+struct Ball;
+
+fn take_ball(
+    mut commands: Commands,
+    mut events: EventReader<CollisionEvent>,
+    characters: Query<(), With<CharacterState>>,
+    balls: Query<(), With<Ball>>,
+) {
+    for event in events.iter() {
+        if let CollisionEvent::Started(e1, e2, _) = event {
+            let (character, ball) = if characters.contains(*e1) {
+                if balls.contains(*e2) {
+                    (e1, e2)
+                } else {
+                    continue;
+                }
+            } else if characters.contains(*e2) {
+                if balls.contains(*e1) {
+                    (e2, e1)
+                } else {
+                    continue;
+                }
+            } else {
+                continue;
+            };
+            
+            info!("Character {character:?} has picked up ball {ball:?}");
+            commands.entity(*character).insert(HasBall);
+            commands.entity(*ball).despawn_recursive();
+        }
+    }
+}
+
+#[derive(Component)]
+struct HasBall;
