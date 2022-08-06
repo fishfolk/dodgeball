@@ -54,7 +54,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(Sprite3dPlugin)
         .insert_resource(RapierConfiguration {
-            gravity: Vect::Z * -9.81,
+            gravity: Vect::Z * -9.81 * 50.0,
             ..default()
         })
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
@@ -83,7 +83,6 @@ fn spawn_camera(mut commands: Commands) {
 
     camera.transform.translation = Vec3::new(10.0, 0.0, 5.0);
     camera.transform.look_at(Vec3::ZERO, Vec3::NEG_X);
-    // camera.transform.translation.z -= 1.0;
 
     commands.spawn_bundle(camera);
 }
@@ -110,10 +109,6 @@ fn spawn_stage(
         .insert_bundle((
             Collider::cuboid(2.5, 15.0, 0.01),
             RigidBody::Fixed,
-            Friction {
-                coefficient: 0.0,
-                combine_rule: CoefficientCombineRule::Min,
-            },
         ));
 }
 
@@ -152,10 +147,6 @@ fn spawn_character(
             LockedAxes::ROTATION_LOCKED,
             Velocity::default(),
             Player,
-            Damping {
-                linear_damping: 5.0,
-                ..default()
-            },
         ));
 }
 
