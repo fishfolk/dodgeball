@@ -67,7 +67,7 @@ fn main() {
                 .with_system(spawn_camera)
                 .with_system(spawn_stage)
                 .with_system(spawn_character)
-                .with_system(spawn_ball),
+                .with_system(initial_spawn_ball),
         )
         .add_system_set(
             SystemSet::on_update(GameState::Ready)
@@ -145,6 +145,7 @@ fn spawn_character(
                 (KeyCode::O, Action::MoveTowards),
                 (KeyCode::Comma, Action::MoveAway),
                 (KeyCode::Space, Action::Jump),
+                (KeyCode::Period, Action::Throw),
             ]),
             ..default()
         })
@@ -184,20 +185,27 @@ enum Action {
     MoveAway,
     MoveTowards,
     Jump,
+    Throw,
 }
 
 fn player_control(
+    mut commands: Commands,
     mut player: Query<
         (
+            Entity,
             &mut Velocity,
             &mut ExternalImpulse,
             &ActionState<Action>,
             &mut CharacterState,
+            Option<&HasBall>,
+            &GlobalTransform,
         ),
         With<Player>,
     >,
+    mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    let (mut velocity, mut impulse, action_state, mut character_state) = player.single_mut();
+    let (entity, mut velocity, mut impulse, action_state, mut character_state, has_ball, transform) =
+        player.single_mut();
     let mut movement = Vec2::default();
     for action in action_state.get_pressed() {
         match action {
@@ -209,6 +217,20 @@ fn player_control(
                 if matches!(*character_state, CharacterState::Grounded) {
                     impulse.impulse = Vec3::new(0.0, 0.0, 0.7);
                     *character_state = CharacterState::InAir;
+                }
+            }
+            Action::Throw => {
+                if has_ball.is_some() {
+                    let ball = spawn_ball(
+                        transform.translation() + Vec3::new(0.0, 0.4, 0.1),
+                        &mut commands,
+                        &mut meshes,
+                    );
+                    commands.entity(ball).insert(Velocity {
+                        linvel: Vec3::new(0.0, 10.0, 4.0),
+                        ..default()
+                    });
+                    commands.entity(entity).remove::<HasBall>();
                 }
             }
         }
@@ -269,7 +291,15 @@ fn character_state(
     }
 }
 
-fn spawn_ball(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+fn initial_spawn_ball(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
+    spawn_ball(Vec3::new(0.0, 0.0, 1.0), &mut commands, &mut meshes);
+}
+
+fn spawn_ball(
+    position: Vec3,
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+) -> Entity {
     commands
         .spawn_bundle(PbrBundle {
             mesh: meshes.add(
@@ -279,7 +309,7 @@ fn spawn_ball(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
                 }
                 .into(),
             ),
-            transform: Transform::from_xyz(0.0, 0.0, 1.0),
+            transform: Transform::from_translation(position),
             ..default()
         })
         .insert_bundle((
@@ -290,7 +320,8 @@ fn spawn_ball(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
                 combine_rule: CoefficientCombineRule::Max,
             },
             Ball,
-        ));
+        ))
+        .id()
 }
 
 #[derive(Component)]
@@ -319,7 +350,7 @@ fn take_ball(
             } else {
                 continue;
             };
-            
+
             info!("Character {character:?} has picked up ball {ball:?}");
             commands.entity(*character).insert(HasBall);
             commands.entity(*ball).despawn_recursive();
