@@ -54,7 +54,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(Sprite3dPlugin)
         .insert_resource(RapierConfiguration {
-            gravity: Vect::Z * -9.81 * 50.0,
+            gravity: Vect::Z * -9.81,
             ..default()
         })
         .add_plugin(RapierPhysicsPlugin::<NoUserData>::default())
@@ -68,7 +68,11 @@ fn main() {
                 .with_system(spawn_stage)
                 .with_system(spawn_character),
         )
-        .add_system_set(SystemSet::on_update(GameState::Ready).with_system(player_control))
+        .add_system_set(
+            SystemSet::on_update(GameState::Ready)
+                .with_system(player_control)
+                .with_system(character_state),
+        )
         .run();
 }
 
@@ -86,6 +90,9 @@ fn spawn_camera(mut commands: Commands) {
 
     commands.spawn_bundle(camera);
 }
+
+#[derive(Component)]
+struct Ground;
 
 fn spawn_stage(
     mut commands: Commands,
@@ -106,10 +113,7 @@ fn spawn_stage(
             material: materials.add(mat),
             ..default()
         })
-        .insert_bundle((
-            Collider::cuboid(2.5, 15.0, 0.01),
-            RigidBody::Fixed,
-        ));
+        .insert_bundle((Collider::cuboid(2.5, 15.0, 0.01), RigidBody::Fixed, Ground));
 }
 
 fn spawn_character(
@@ -138,6 +142,7 @@ fn spawn_character(
                 (KeyCode::E, Action::MoveRight),
                 (KeyCode::O, Action::MoveTowards),
                 (KeyCode::Comma, Action::MoveAway),
+                (KeyCode::Space, Action::Jump),
             ]),
             ..default()
         })
@@ -146,7 +151,10 @@ fn spawn_character(
             RigidBody::Dynamic,
             LockedAxes::ROTATION_LOCKED,
             Velocity::default(),
+            ExternalImpulse::default(),
+            ActiveEvents::COLLISION_EVENTS,
             Player,
+            CharacterState::Grounded,
         ));
 }
 
@@ -173,18 +181,88 @@ enum Action {
     MoveRight,
     MoveAway,
     MoveTowards,
+    Jump,
 }
 
-fn player_control(mut player: Query<(&mut Velocity, &ActionState<Action>), With<Player>>) {
-    let (mut velocity, state) = player.single_mut();
+fn player_control(
+    mut player: Query<
+        (
+            &mut Velocity,
+            &mut ExternalImpulse,
+            &ActionState<Action>,
+            &mut CharacterState,
+        ),
+        With<Player>,
+    >,
+) {
+    let (mut velocity, mut impulse, action_state, mut character_state) = player.single_mut();
     let mut movement = Vec2::default();
-    for action in state.get_pressed() {
+    for action in action_state.get_pressed() {
         match action {
             Action::MoveLeft => movement.y = -1.0,
             Action::MoveRight => movement.y = 1.0,
             Action::MoveAway => movement.x = -1.0,
             Action::MoveTowards => movement.x = 1.0,
+            Action::Jump => {
+                if matches!(*character_state, CharacterState::Grounded) {
+                    impulse.impulse = Vec3::new(0.0, 0.0, 0.7);
+                    *character_state = CharacterState::InAir;
+                }
+            }
         }
     }
-    velocity.linvel = movement.normalize_or_zero().extend(0.0) * 10.0;
+    velocity.linvel = (movement.normalize_or_zero() * 10.0).extend(velocity.linvel.z);
+}
+
+#[derive(Component, Clone, Copy)]
+enum CharacterState {
+    Grounded,
+    InAir,
+}
+
+fn character_state(
+    mut events: EventReader<CollisionEvent>,
+    mut characters: Query<&mut CharacterState>,
+    ground: Query<(), With<Ground>>,
+) {
+    for event in events.iter() {
+        match event {
+            CollisionEvent::Started(e1, e2, _) => {
+                let mut character = if let Ok(character) = characters.get_mut(*e1) {
+                    if ground.contains(*e2) {
+                        character
+                    } else {
+                        continue;
+                    }
+                } else if let Ok(character) = characters.get_mut(*e2) {
+                    if ground.contains(*e1) {
+                        character
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                };
+                *character = CharacterState::Grounded;
+            }
+            CollisionEvent::Stopped(e1, e2, _) => {
+                let mut character = if let Ok(character) = characters.get_mut(*e1) {
+                    if ground.contains(*e2) {
+                        character
+                    } else {
+                        continue;
+                    }
+                } else if let Ok(character) = characters.get_mut(*e2) {
+                    if ground.contains(*e1) {
+                        character
+                    } else {
+                        continue;
+                    }
+                } else {
+                    continue;
+                };
+                *character = CharacterState::InAir;
+            }
+        }
+    }
 }
